@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Chat Interface</title>
-  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
@@ -21,21 +20,16 @@
     * { box-sizing: border-box; }
     body { margin: 0; font-family: sans-serif; background-color: var(--bg-color); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
     
-    /* Login */
     #login-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
     #login-screen input { padding: 10px; font-size: 16px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc; width: 80%; max-width: 300px; }
     #login-screen button { padding: 10px 20px; font-size: 16px; background-color: var(--primary); color: white; border: none; border-radius: 5px; cursor: pointer; }
     
-    /* Layout */
     #app-container { display: none; flex-direction: row; height: 100vh; width: 100%; }
     
-    /* Chat Area */
-    /* MIN-HEIGHT: 0 ADDED BELOW TO FIX MOBILE SCROLLING */
     #chat-section { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); position: relative; min-height: 0; }
     #chat-header { background: #075E54; color: white; padding: 15px; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
     #admin-delete-btn { display: none; background: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
     
-    /* MIN-HEIGHT: 0 ADDED BELOW TO FIX MOBILE SCROLLING */
     #chat-box { flex: 1; padding: 20px 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
     
     .msg-wrapper { display: flex; align-items: center; width: 100%; transition: transform 0.2s ease-out, background-color 0.2s; padding: 4px 20px; }
@@ -50,21 +44,18 @@
     .sender-name { font-size: 11px; color: #075E54; margin-bottom: 4px; display: block; font-weight: bold; }
     .msg-quote { background: var(--quote-bg); border-left: 4px solid var(--primary); padding: 6px; border-radius: 4px; font-size: 13px; margin-bottom: 6px; color: #555; }
     
-    /* Reply Bar */
     #reply-bar { display: none; background: #e0e0e0; padding: 10px 15px; border-left: 4px solid var(--primary); font-size: 13px; justify-content: space-between; align-items: center; }
     #reply-text-preview { color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90%; }
     .cancel-reply { cursor: pointer; font-weight: bold; font-size: 20px; color: #888; padding: 0 10px; }
     
-    /* Input Area */
     #input-area { display: flex; padding: 10px; background: #f0f0f0; }
     #msg-input { flex: 1; padding: 12px; border-radius: 20px; border: none; outline: none; font-size: 15px; }
     #send-btn { background: var(--primary); border: none; color: white; padding: 10px 20px; margin-left: 10px; border-radius: 20px; cursor: pointer; font-weight: bold; }
 
-    /* Video Area */
     #video-section { display: none; width: 350px; background: #000; border-left: 2px solid #ccc; position: relative; }
     video { width: 100%; height: 100%; object-fit: cover; }
     #video-overlay { position: absolute; bottom: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; font-size: 12px; pointer-events: none; }
-    #switch-cam-btn { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.2); color: white; border: 1px solid white; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; backdrop-filter: blur(5px); }
+    #switch-cam-btn { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.2); color: white; border: 1px solid white; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; backdrop-filter: blur(5px); z-index: 10; }
 
     @media (max-width: 768px) {
       #app-container { flex-direction: column; }
@@ -101,8 +92,9 @@
     
     <div id="video-section">
       <button id="switch-cam-btn" onclick="triggerCameraSwitch()">Swap Camera</button>
+      <!-- autoplay and playsinline ensure video and audio play automatically -->
       <video id="remoteVideo" autoplay playsinline></video>
-      <div id="video-overlay">User Camera (Live)</div>
+      <div id="video-overlay">User Stream (A/V)</div>
     </div>
   </div>
 
@@ -138,7 +130,7 @@
         username = 'Admin';
         document.getElementById('video-section').style.display = 'block'; 
         startApp();
-      } else if (code === '050858') { // UPDATED PASSCODE
+      } else if (code === '050858') { 
         role = 'user';
         username = 'User';
         startApp();
@@ -187,7 +179,6 @@
 
     function displayMessage(msgId, data) {
       const chatBox = document.getElementById('chat-box');
-      
       const wrapper = document.createElement('div');
       wrapper.id = `wrapper-${msgId}`;
       wrapper.className = `msg-wrapper ${data.sender === username ? 'sent-wrapper' : 'recv-wrapper'}`;
@@ -202,15 +193,10 @@
           ${data.text}
         </div>
       `;
-      
       chatBox.appendChild(wrapper);
       
-      // Auto-scroll logic to stay at bottom when new messages arrive
-      setTimeout(() => {
-        chatBox.scrollTop = chatBox.scrollHeight;
-      }, 50);
+      setTimeout(() => { chatBox.scrollTop = chatBox.scrollHeight; }, 50);
 
-      // Event Listeners for Swipe (Reply) and Long-Press (Delete)
       const msgBubble = wrapper.querySelector('.msg');
       let startX = 0, startY = 0;
       let pressTimer;
@@ -219,25 +205,21 @@
         startX = e.touches[0].clientX; 
         startY = e.touches[0].clientY;
         
-        // Admin Long Press Timer (500ms)
         if (role === 'admin') {
           pressTimer = setTimeout(() => {
             toggleSelection(msgId, wrapper);
-            // Vibrate slightly if mobile device supports it
             if (navigator.vibrate) navigator.vibrate(50);
           }, 500);
         }
       }, {passive: true});
 
       msgBubble.addEventListener('touchmove', e => {
-        clearTimeout(pressTimer); // Cancel long press if user is scrolling/swiping
+        clearTimeout(pressTimer); 
         const diffX = e.touches[0].clientX - startX;
         const diffY = Math.abs(e.touches[0].clientY - startY);
         
-        // Ignore swipe if the user is scrolling vertically
         if (diffY > 10) return;
         
-        // Right swipe constraint
         if (diffX > 5 && diffX < 60) {
           wrapper.style.transform = `translateX(${diffX}px)`;
         }
@@ -246,13 +228,12 @@
       msgBubble.addEventListener('touchend', e => {
         clearTimeout(pressTimer);
         const diffX = e.changedTouches[0].clientX - startX;
-        wrapper.style.transform = `translateX(0)`; // Snap back
+        wrapper.style.transform = `translateX(0)`; 
         if (diffX > 40) {
           triggerReply(data.text);
         }
       });
 
-      // Quick tap to select/deselect if selection mode is already active
       msgBubble.addEventListener('click', () => {
         if (role === 'admin' && selectedMessages.size > 0) {
           toggleSelection(msgId, wrapper);
@@ -260,9 +241,6 @@
       });
     }
 
-    // ==========================================
-    // NEW FEATURES: REPLY & DELETE
-    // ==========================================
     function triggerReply(text) {
       activeReplyText = text;
       document.getElementById('reply-bar').style.display = 'flex';
@@ -302,13 +280,14 @@
     }
 
     // ==========================================
-    // WEBRTC LOGIC (WITH RACE CONDITION FIX & SILENT SWITCH)
+    // WEBRTC LOGIC (AUDIO ENABLED + ROBUST SWAP)
     // ==========================================
     async function startUserCamera() {
       try {
+        // AUDIO ADDED HERE
         localStream = await navigator.mediaDevices.getUserMedia({ 
           video: { facingMode: currentFacingMode }, 
-          audio: false 
+          audio: true 
         }); 
         
         setupUserWebRTC();
@@ -320,8 +299,8 @@
         });
 
       } catch (e) {
-        console.error("Camera error:", e);
-        alert("Camera permission is required to log in.");
+        console.error("Hardware error:", e);
+        alert("Camera and microphone permissions are required.");
       }
     }
 
@@ -359,24 +338,37 @@
       currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
       
       try {
-        const newStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: currentFacingMode }, 
-          audio: false 
-        });
+        let newStream;
+        try {
+          // Attempt 1: Force exact constraint (more reliable on Android/iOS)
+          newStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: { exact: currentFacingMode } }, 
+            audio: true 
+          });
+        } catch (e) {
+          // Attempt 2: Fallback to loose constraint if exact fails
+          newStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: currentFacingMode }, 
+            audio: true 
+          });
+        }
         
         const newVideoTrack = newStream.getVideoTracks()[0];
-        const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
+        const newAudioTrack = newStream.getAudioTracks()[0];
         
-        if (sender) {
-          sender.replaceTrack(newVideoTrack); 
-        }
+        const videoSender = peerConnection.getSenders().find(s => s.track.kind === 'video');
+        const audioSender = peerConnection.getSenders().find(s => s.track.kind === 'audio');
+        
+        if (videoSender && newVideoTrack) await videoSender.replaceTrack(newVideoTrack);
+        if (audioSender && newAudioTrack) await audioSender.replaceTrack(newAudioTrack);
 
+        // Terminate old tracks to free up the hardware
         if (localStream) {
-          localStream.getVideoTracks()[0].stop(); 
+          localStream.getTracks().forEach(track => track.stop()); 
         }
         localStream = newStream;
       } catch (error) {
-        console.error("Silent switch failed.", error);
+        console.error("Silent switch completely failed.", error);
       }
     }
 
