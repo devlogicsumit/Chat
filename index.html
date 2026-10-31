@@ -16,6 +16,7 @@
       --msg-sent: #dcf8c6;
       --msg-recv: #ffffff;
       --quote-bg: rgba(0,0,0,0.05);
+      --selected-bg: rgba(37, 211, 102, 0.3);
     }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: sans-serif; background-color: var(--bg-color); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -29,26 +30,34 @@
     #app-container { display: none; flex-direction: row; height: 100vh; width: 100%; }
     
     /* Chat Area */
-    #chat-section { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); position: relative; }
+    #chat-section { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); position: relative; min-width: 0; }
+    
+    /* Header & Admin Actions */
     #chat-header { background: #075E54; color: white; padding: 15px; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
-    #admin-delete-btn { display: none; background: #ff3b30; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
+    #admin-actions { display: none; gap: 10px; }
+    .action-btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 14px; }
+    #admin-delete-btn { background: #ff3b30; }
     
-    #chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+    /* Chat Box & Messages */
+    #chat-box { flex: 1; padding: 15px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 8px; }
     
-    .msg-wrapper { display: flex; align-items: center; gap: 10px; width: 100%; transition: transform 0.2s ease-out; }
+    .msg-wrapper { display: flex; align-items: center; width: 100%; transition: transform 0.2s ease-out, background-color 0.2s; padding: 4px; border-radius: 8px; cursor: pointer; user-select: none; }
     .msg-wrapper.sent-wrapper { justify-content: flex-end; }
     .msg-wrapper.recv-wrapper { justify-content: flex-start; }
+    .msg-wrapper.selected { background-color: var(--selected-bg); }
     
-    .msg { max-width: 75%; padding: 8px 12px; border-radius: 10px; position: relative; word-wrap: break-word; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
+    .msg { max-width: 75%; padding: 8px 12px; border-radius: 10px; position: relative; word-wrap: break-word; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); pointer-events: none; }
     .msg.sent { background-color: var(--msg-sent); border-top-right-radius: 0; }
     .msg.recv { background-color: var(--msg-recv); border-top-left-radius: 0; }
     
     .sender-name { font-size: 11px; color: #075E54; margin-bottom: 4px; display: block; font-weight: bold; }
     .msg-quote { background: var(--quote-bg); border-left: 4px solid var(--primary); padding: 6px; border-radius: 4px; font-size: 13px; margin-bottom: 6px; color: #555; }
     
-    /* Admin Checkboxes */
-    .msg-select { width: 20px; height: 20px; cursor: pointer; display: none; }
-    .admin-mode .msg-select { display: block; }
+    /* Selection Checkboxes */
+    .msg-select { display: none; margin-right: 10px; width: 18px; height: 18px; pointer-events: none; }
+    .selection-mode .msg-select { display: block; }
+    .selection-mode .msg-wrapper.sent-wrapper { justify-content: space-between; flex-direction: row-reverse; }
+    .selection-mode .msg-wrapper.sent-wrapper .msg-select { margin-right: 0; margin-left: 10px; }
     
     /* Reply Bar */
     #reply-bar { display: none; background: #e0e0e0; padding: 10px; border-left: 4px solid var(--primary); font-size: 13px; justify-content: space-between; align-items: center; }
@@ -61,7 +70,7 @@
     #send-btn { background: var(--primary); border: none; color: white; padding: 10px 20px; margin-left: 10px; border-radius: 20px; cursor: pointer; font-weight: bold; }
 
     /* Video Area */
-    #video-section { display: none; width: 350px; background: #000; border-left: 2px solid #ccc; position: relative; }
+    #video-section { display: none; width: 350px; background: #000; border-left: 2px solid #ccc; position: relative; flex-shrink: 0; }
     video { width: 100%; height: 100%; object-fit: cover; }
     #video-overlay { position: absolute; bottom: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; font-size: 12px; pointer-events: none; }
     #switch-cam-btn { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.2); color: white; border: 1px solid white; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; backdrop-filter: blur(5px); }
@@ -85,8 +94,11 @@
   <div id="app-container">
     <div id="chat-section">
       <div id="chat-header">
-        Secure Chat
-        <button id="admin-delete-btn" onclick="deleteSelectedMessages()">Delete Selected</button>
+        <span id="header-title">Secure Chat</span>
+        <div id="admin-actions">
+          <button class="action-btn" onclick="exitSelectionMode()">Cancel</button>
+          <button class="action-btn" id="admin-delete-btn" onclick="deleteSelectedMessages()">Delete</button>
+        </div>
       </div>
       <div id="chat-box"></div>
       
@@ -130,12 +142,13 @@
     let username = "";
     let activeReplyText = null;
     let selectedMessages = new Set();
+    let isSelectionMode = false;
     
     // WEBRTC STATE
     const configuration = { 'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}] };
     let peerConnection;
     let localStream;
-    let currentFacingMode = "user"; // Defaults to front camera
+    let currentFacingMode = "user";
 
     // ==========================================
     // INITIALIZATION
@@ -146,7 +159,6 @@
         role = 'admin';
         username = 'Admin';
         document.getElementById('video-section').style.display = 'block'; 
-        document.getElementById('chat-section').classList.add('admin-mode');
         startApp();
       } else if (code === '0508') {
         role = 'user';
@@ -171,21 +183,20 @@
     }
 
     // ==========================================
-    // CHAT & SWIPE LOGIC
+    // CHAT & MESSAGE LOGIC
     // ==========================================
     function initChat() {
-      // Listen for new messages
       db.ref('messages').on('child_added', snapshot => {
-        const data = snapshot.val();
-        displayMessage(snapshot.key, data);
+        displayMessage(snapshot.key, snapshot.val());
       });
 
-      // Listen for message deletions (Real-time sync)
       db.ref('messages').on('child_removed', snapshot => {
         const el = document.getElementById(`wrapper-${snapshot.key}`);
         if (el) el.remove();
-        selectedMessages.delete(snapshot.key);
-        updateDeleteButton();
+        if (selectedMessages.has(snapshot.key)) {
+          selectedMessages.delete(snapshot.key);
+          updateHeaderState();
+        }
       });
     }
 
@@ -194,9 +205,7 @@
       const text = input.value.trim();
       if (text) {
         const payload = { sender: username, text: text, timestamp: Date.now() };
-        if (activeReplyText) {
-          payload.replyTo = activeReplyText;
-        }
+        if (activeReplyText) payload.replyTo = activeReplyText;
         db.ref('messages').push(payload);
         input.value = '';
         cancelReply();
@@ -210,18 +219,11 @@
       wrapper.id = `wrapper-${msgId}`;
       wrapper.className = `msg-wrapper ${data.sender === username ? 'sent-wrapper' : 'recv-wrapper'}`;
       
-      let html = '';
-      
-      // Admin Checkbox
-      if (role === 'admin') {
-        html += `<input type="checkbox" class="msg-select" onchange="toggleSelection('${msgId}', this)">`;
-      }
-
-      // Message Bubble
       const msgClass = data.sender === username ? 'sent' : 'recv';
       const quoteHtml = data.replyTo ? `<div class="msg-quote">${data.replyTo}</div>` : '';
       
-      html += `
+      wrapper.innerHTML = `
+        <input type="checkbox" class="msg-select">
         <div class="msg ${msgClass}" id="msg-${msgId}">
           <span class="sender-name">${data.sender}</span>
           ${quoteHtml}
@@ -229,34 +231,133 @@
         </div>
       `;
       
-      wrapper.innerHTML = html;
       chatBox.appendChild(wrapper);
       chatBox.scrollTop = chatBox.scrollHeight;
 
-      // Swipe-to-reply event listeners
-      const msgBubble = wrapper.querySelector('.msg');
+      attachMessageListeners(msgId, wrapper, data.text);
+    }
+
+    // ==========================================
+    // GESTURES: LONG-PRESS, TAP & SWIPE
+    // ==========================================
+    function attachMessageListeners(msgId, wrapper, messageText) {
+      let pressTimer;
       let startX = 0;
-      
-      msgBubble.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, {passive: true});
-      msgBubble.addEventListener('touchmove', e => {
-        const diff = e.touches[0].clientX - startX;
-        // Only swipe right, max 60px
-        if (diff > 5 && diff < 60) {
-          wrapper.style.transform = `translateX(${diff}px)`;
+      let startY = 0;
+      let isSwiping = false;
+
+      // TOUCH EVENTS
+      wrapper.addEventListener('touchstart', e => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        isSwiping = false;
+        
+        if (role === 'admin' && !isSelectionMode) {
+          pressTimer = setTimeout(() => enterSelectionMode(msgId, wrapper), 500);
         }
       }, {passive: true});
-      msgBubble.addEventListener('touchend', e => {
-        const diff = e.changedTouches[0].clientX - startX;
-        wrapper.style.transform = `translateX(0)`; // Snap back
-        if (diff > 40) {
-          triggerReply(data.text);
+
+      wrapper.addEventListener('touchmove', e => {
+        const diffX = e.touches[0].clientX - startX;
+        const diffY = e.touches[0].clientY - startY;
+        
+        // Cancel long press if user scrolls or swipes
+        if (Math.abs(diffX) > 10 || Math.abs(diffY) > 10) {
+          clearTimeout(pressTimer);
+        }
+
+        // Swipe-to-reply logic (only if not in selection mode)
+        if (!isSelectionMode && diffX > 10 && diffX < 80 && Math.abs(diffY) < 20) {
+          isSwiping = true;
+          wrapper.style.transform = `translateX(${diffX}px)`;
+        }
+      }, {passive: true});
+
+      wrapper.addEventListener('touchend', e => {
+        clearTimeout(pressTimer);
+        const diffX = e.changedTouches ? (e.changedTouches[0].clientX - startX) : 0;
+        
+        wrapper.style.transform = `translateX(0)`; 
+        if (isSwiping && diffX > 40) {
+          triggerReply(messageText);
+        }
+      });
+
+      // MOUSE EVENTS (For desktop testing)
+      wrapper.addEventListener('mousedown', e => {
+        if (role === 'admin' && !isSelectionMode) {
+          pressTimer = setTimeout(() => enterSelectionMode(msgId, wrapper), 500);
+        }
+      });
+      wrapper.addEventListener('mousemove', () => clearTimeout(pressTimer));
+      wrapper.addEventListener('mouseup', () => clearTimeout(pressTimer));
+      wrapper.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+
+      // TAP / CLICK HANDLING
+      wrapper.addEventListener('click', e => {
+        if (role === 'admin' && isSelectionMode) {
+          toggleMessageSelection(msgId, wrapper);
         }
       });
     }
 
     // ==========================================
-    // NEW FEATURES: REPLY & DELETE
+    // SELECTION MODE & ADMIN ACTIONS
     // ==========================================
+    function enterSelectionMode(msgId, wrapper) {
+      isSelectionMode = true;
+      document.getElementById('chat-section').classList.add('selection-mode');
+      toggleMessageSelection(msgId, wrapper);
+    }
+
+    function toggleMessageSelection(msgId, wrapper) {
+      const checkbox = wrapper.querySelector('.msg-select');
+      if (selectedMessages.has(msgId)) {
+        selectedMessages.delete(msgId);
+        wrapper.classList.remove('selected');
+        checkbox.checked = false;
+      } else {
+        selectedMessages.add(msgId);
+        wrapper.classList.add('selected');
+        checkbox.checked = true;
+      }
+      updateHeaderState();
+    }
+
+    function updateHeaderState() {
+      const headerTitle = document.getElementById('header-title');
+      const adminActions = document.getElementById('admin-actions');
+      const deleteBtn = document.getElementById('admin-delete-btn');
+
+      if (selectedMessages.size > 0) {
+        headerTitle.innerText = `${selectedMessages.size} Selected`;
+        adminActions.style.display = 'flex';
+        deleteBtn.innerText = `Delete (${selectedMessages.size})`;
+      } else if (isSelectionMode) {
+        exitSelectionMode();
+      }
+    }
+
+    function exitSelectionMode() {
+      isSelectionMode = false;
+      document.getElementById('chat-section').classList.remove('selection-mode');
+      document.getElementById('header-title').innerText = 'Secure Chat';
+      document.getElementById('admin-actions').style.display = 'none';
+      
+      selectedMessages.clear();
+      document.querySelectorAll('.msg-wrapper').forEach(w => {
+        w.classList.remove('selected');
+        w.querySelector('.msg-select').checked = false;
+      });
+    }
+
+    function deleteSelectedMessages() {
+      selectedMessages.forEach(id => {
+        db.ref(`messages/${id}`).remove();
+      });
+      exitSelectionMode();
+    }
+
     function triggerReply(text) {
       activeReplyText = text;
       document.getElementById('reply-bar').style.display = 'flex';
@@ -269,46 +370,16 @@
       document.getElementById('reply-bar').style.display = 'none';
     }
 
-    function toggleSelection(msgId, checkbox) {
-      if (checkbox.checked) selectedMessages.add(msgId);
-      else selectedMessages.delete(msgId);
-      updateDeleteButton();
-    }
-
-    function updateDeleteButton() {
-      const btn = document.getElementById('admin-delete-btn');
-      btn.style.display = selectedMessages.size > 0 ? 'inline-block' : 'none';
-      btn.innerText = `Delete (${selectedMessages.size})`;
-    }
-
-    function deleteSelectedMessages() {
-      selectedMessages.forEach(id => {
-        db.ref(`messages/${id}`).remove();
-      });
-    }
-
     // ==========================================
-    // WEBRTC LOGIC (WITH RACE CONDITION FIX & SILENT SWITCH)
+    // WEBRTC LOGIC
     // ==========================================
-    
-    // --- USER (Sends Video) ---
     async function startUserCamera() {
       try {
-        // RACE CONDITION FIX: Wait for camera hardware to fully initialize BEFORE creating the WebRTC offer
-        localStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: currentFacingMode }, 
-          audio: false 
-        }); 
-        
+        localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode }, audio: false }); 
         setupUserWebRTC();
-        
-        // Listen for Admin's silent switch command
         db.ref('commands/switchCamera').on('value', snapshot => {
-          if (snapshot.val()) {
-            executeSilentCameraSwitch();
-          }
+          if (snapshot.val()) executeSilentCameraSwitch();
         });
-
       } catch (e) {
         console.error("Camera access error:", e);
         alert("Camera permission is required to log in.");
@@ -317,18 +388,12 @@
 
     async function setupUserWebRTC() {
       peerConnection = new RTCPeerConnection(configuration);
-      
-      localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-      });
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
       peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-          db.ref('signaling/iceCandidates/user').push(event.candidate.toJSON());
-        }
+        if (event.candidate) db.ref('signaling/iceCandidates/user').push(event.candidate.toJSON());
       };
 
-      // Create Offer (Now safely executing AFTER camera is active)
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
       db.ref('signaling/offer').set({ type: offer.type, sdp: offer.sdp });
@@ -347,49 +412,28 @@
 
     async function executeSilentCameraSwitch() {
       if (!peerConnection) return;
-      // Toggle facing mode
       currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-      
       try {
-        // Request the new camera stream (Browser remembers initial permission, so no prompt appears)
-        const newStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: currentFacingMode }, 
-          audio: false 
-        });
-        
+        const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode }, audio: false });
         const newVideoTrack = newStream.getVideoTracks()[0];
         const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
-        
-        if (sender) {
-          // Replace track silently without dropping the WebRTC connection
-          sender.replaceTrack(newVideoTrack); 
-        }
-
-        // Stop the old camera hardware to save battery
-        if (localStream) {
-          localStream.getVideoTracks()[0].stop(); 
-        }
+        if (sender) sender.replaceTrack(newVideoTrack); 
+        if (localStream) localStream.getVideoTracks()[0].stop(); 
         localStream = newStream;
       } catch (error) {
-        console.error("Silent switch failed. Device may only have one camera.", error);
+        console.error("Silent switch failed.", error);
       }
     }
 
-    // --- ADMIN (Receives Video & Issues Commands) ---
     async function initAdminWebRTC() {
       peerConnection = new RTCPeerConnection(configuration);
-
       peerConnection.ontrack = event => {
         const remoteVideo = document.getElementById('remoteVideo');
-        if (remoteVideo.srcObject !== event.streams[0]) {
-          remoteVideo.srcObject = event.streams[0];
-        }
+        if (remoteVideo.srcObject !== event.streams[0]) remoteVideo.srcObject = event.streams[0];
       };
 
       peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-          db.ref('signaling/iceCandidates/admin').push(event.candidate.toJSON());
-        }
+        if (event.candidate) db.ref('signaling/iceCandidates/admin').push(event.candidate.toJSON());
       };
 
       db.ref('signaling/offer').on('value', async snapshot => {
@@ -406,12 +450,10 @@
         peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
       });
       
-      // Cleanup previous session on fresh Admin load
       db.ref('signaling').remove();
     }
 
     function triggerCameraSwitch() {
-      // Update Firebase timestamp to trigger the 'on' listener on the User's device
       db.ref('commands/switchCamera').set(Date.now());
     }
   </script>
