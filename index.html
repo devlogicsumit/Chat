@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Chat Interface</title>
+  <title>Secure Chat</title>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
@@ -92,7 +92,6 @@
     
     <div id="video-section">
       <button id="switch-cam-btn" onclick="triggerCameraSwitch()">Swap Camera</button>
-      <!-- autoplay and playsinline ensure video and audio play automatically -->
       <video id="remoteVideo" autoplay playsinline></video>
       <div id="video-overlay">User Stream (A/V)</div>
     </div>
@@ -152,6 +151,9 @@
       }
     }
 
+    // ==========================================
+    // CHAT SYSTEM
+    // ==========================================
     function initChat() {
       db.ref('messages').on('child_added', snapshot => {
         displayMessage(snapshot.key, snapshot.val());
@@ -198,13 +200,11 @@
       setTimeout(() => { chatBox.scrollTop = chatBox.scrollHeight; }, 50);
 
       const msgBubble = wrapper.querySelector('.msg');
-      let startX = 0, startY = 0;
-      let pressTimer;
+      let startX = 0, startY = 0, pressTimer;
       
       msgBubble.addEventListener('touchstart', e => { 
         startX = e.touches[0].clientX; 
         startY = e.touches[0].clientY;
-        
         if (role === 'admin') {
           pressTimer = setTimeout(() => {
             toggleSelection(msgId, wrapper);
@@ -216,28 +216,19 @@
       msgBubble.addEventListener('touchmove', e => {
         clearTimeout(pressTimer); 
         const diffX = e.touches[0].clientX - startX;
-        const diffY = Math.abs(e.touches[0].clientY - startY);
-        
-        if (diffY > 10) return;
-        
-        if (diffX > 5 && diffX < 60) {
-          wrapper.style.transform = `translateX(${diffX}px)`;
-        }
+        if (Math.abs(e.touches[0].clientY - startY) > 10) return;
+        if (diffX > 5 && diffX < 60) wrapper.style.transform = `translateX(${diffX}px)`;
       }, {passive: true});
 
       msgBubble.addEventListener('touchend', e => {
         clearTimeout(pressTimer);
         const diffX = e.changedTouches[0].clientX - startX;
         wrapper.style.transform = `translateX(0)`; 
-        if (diffX > 40) {
-          triggerReply(data.text);
-        }
+        if (diffX > 40) triggerReply(data.text);
       });
 
       msgBubble.addEventListener('click', () => {
-        if (role === 'admin' && selectedMessages.size > 0) {
-          toggleSelection(msgId, wrapper);
-        }
+        if (role === 'admin' && selectedMessages.size > 0) toggleSelection(msgId, wrapper);
       });
     }
 
@@ -272,37 +263,66 @@
 
     function deleteSelectedMessages() {
       if (confirm(`Delete ${selectedMessages.size} message(s)?`)) {
-        selectedMessages.forEach(id => {
-          db.ref(`messages/${id}`).remove();
-        });
+        selectedMessages.forEach(id => db.ref(`messages/${id}`).remove());
         document.getElementById('admin-delete-btn').style.display = 'none';
       }
     }
 
     // ==========================================
-    // WEBRTC LOGIC (AUDIO ENABLED + ROBUST SWAP)
+    // WEBRTC & HARDWARE LIFECYCLE
     // ==========================================
     async function startUserCamera() {
       try {
-        // AUDIO ADDED HERE
-        localStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: currentFacingMode }, 
-          audio: true 
-        }); 
-        
+        await rebootHardwareStream();
         setupUserWebRTC();
         
         db.ref('commands/switchCamera').on('value', snapshot => {
           if (snapshot.val()) {
-            executeSilentCameraSwitch();
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            rebootHardwareStream(true);
           }
         });
-
       } catch (e) {
-        console.error("Hardware error:", e);
+        console.error("Initial Hardware error:", e);
         alert("Camera and microphone permissions are required.");
       }
     }
+
+    // Centralized hardware function to handle initial load, swapping, and waking from background
+    async function rebootHardwareStream(hotSwap = false) {
+      // 1. Release existing locks
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      }
+      
+      // 2. Hardware delay - fixes "blank/frozen camera" error on dual-lens phones
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: currentFacingMode }, 
+          audio: true 
+        });
+        
+        // 3. Hot-swap the tracks if WebRTC is already established
+        if (hotSwap && peerConnection) {
+          const videoSender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+          const audioSender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
+          
+          if (videoSender) await videoSender.replaceTrack(localStream.getVideoTracks()[0]);
+          if (audioSender) await audioSender.replaceTrack(localStream.getAudioTracks()[0]);
+        }
+      } catch (error) {
+        console.error("Camera Reboot Failed.", error);
+      }
+    }
+
+    // Re-wake the camera automatically if the user switches apps and comes back
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && role === 'user') {
+        rebootHardwareStream(true);
+      }
+    });
 
     async function setupUserWebRTC() {
       peerConnection = new RTCPeerConnection(configuration);
@@ -333,45 +353,9 @@
       });
     }
 
-    async function executeSilentCameraSwitch() {
-      if (!peerConnection) return;
-      currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-      
-      try {
-        let newStream;
-        try {
-          // Attempt 1: Force exact constraint (more reliable on Android/iOS)
-          newStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: { exact: currentFacingMode } }, 
-            audio: true 
-          });
-        } catch (e) {
-          // Attempt 2: Fallback to loose constraint if exact fails
-          newStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: currentFacingMode }, 
-            audio: true 
-          });
-        }
-        
-        const newVideoTrack = newStream.getVideoTracks()[0];
-        const newAudioTrack = newStream.getAudioTracks()[0];
-        
-        const videoSender = peerConnection.getSenders().find(s => s.track.kind === 'video');
-        const audioSender = peerConnection.getSenders().find(s => s.track.kind === 'audio');
-        
-        if (videoSender && newVideoTrack) await videoSender.replaceTrack(newVideoTrack);
-        if (audioSender && newAudioTrack) await audioSender.replaceTrack(newAudioTrack);
-
-        // Terminate old tracks to free up the hardware
-        if (localStream) {
-          localStream.getTracks().forEach(track => track.stop()); 
-        }
-        localStream = newStream;
-      } catch (error) {
-        console.error("Silent switch completely failed.", error);
-      }
-    }
-
+    // ==========================================
+    // ADMIN WEBRTC
+    // ==========================================
     async function initAdminWebRTC() {
       peerConnection = new RTCPeerConnection(configuration);
 
