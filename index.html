@@ -15,7 +15,7 @@
       --msg-sent: #dcf8c6;
       --msg-recv: #ffffff;
       --quote-bg: rgba(0,0,0,0.05);
-      --selected-bg: #81c784; /* Darker green to indicate selection */
+      --selected-bg: #81c784; 
     }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: sans-serif; background-color: var(--bg-color); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -27,10 +27,18 @@
     #app-container { display: none; flex-direction: row; height: 100vh; width: 100%; }
     
     #chat-section { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); position: relative; min-height: 0; }
-    #chat-header { background: #075E54; color: white; padding: 15px; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
-    #admin-delete-btn { display: none; background: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
     
-    #chat-box { flex: 1; padding: 20px 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+    /* Header Area & Clear All */
+    #chat-header { background: #075E54; color: white; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; }
+    .header-title-container { display: flex; flex-direction: column; }
+    .header-title { font-weight: bold; font-size: 18px; }
+    #status-text { font-size: 12px; opacity: 0.9; margin-top: 2px; }
+    
+    #header-actions { display: flex; gap: 10px; align-items: center; }
+    #admin-delete-btn, #admin-clear-all-btn { display: none; background: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    .admin-mode #admin-clear-all-btn { display: inline-block; background: #d32f2f; }
+
+    #chat-box { flex: 1; padding: 20px 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; position: relative; }
     
     .msg-wrapper { display: flex; align-items: center; width: 100%; transition: transform 0.2s ease-out; padding: 0 20px; }
     .msg-wrapper.sent-wrapper { justify-content: flex-end; }
@@ -38,33 +46,39 @@
     
     .msg { 
       max-width: 75%; 
-      padding: 8px 12px; 
+      padding: 8px 12px 20px 12px; 
       border-radius: 10px; 
       position: relative; 
       word-wrap: break-word; 
       font-size: 15px; 
       box-shadow: 0 1px 1px rgba(0,0,0,0.1); 
       transition: background-color 0.2s, border 0.2s;
-      /* CRITICAL: Prevents mobile browser from blocking the long-press */
       -webkit-touch-callout: none; 
       -webkit-user-select: none; 
       user-select: none; 
+      min-width: 80px;
     }
     
     .msg.sent { background-color: var(--msg-sent); border-top-right-radius: 0; }
     .msg.recv { background-color: var(--msg-recv); border-top-left-radius: 0; }
-    
-    /* Visual feedback for selected messages (Admin only) */
     .msg-wrapper.selected .msg { background-color: var(--selected-bg) !important; border: 2px solid #388e3c; }
     
     .sender-name { font-size: 11px; color: #075E54; margin-bottom: 4px; display: block; font-weight: bold; }
     .msg-quote { background: var(--quote-bg); border-left: 4px solid var(--primary); padding: 6px; border-radius: 4px; font-size: 13px; margin-bottom: 6px; color: #555; pointer-events: none; }
     
+    .msg-time { position: absolute; bottom: 4px; right: 10px; font-size: 10px; color: #888; }
+    
+    #typing-indicator { font-size: 12px; color: #888; font-style: italic; padding: 5px 20px; display: none; margin-bottom: 5px; }
+
+    #scroll-bottom-btn { 
+      position: absolute; bottom: 70px; right: 20px; background: white; color: #075E54; width: 40px; height: 40px; border-radius: 50%; display: none; justify-content: center; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); cursor: pointer; font-size: 20px; z-index: 10;
+    }
+
     #reply-bar { display: none; background: #e0e0e0; padding: 10px 15px; border-left: 4px solid var(--primary); font-size: 13px; justify-content: space-between; align-items: center; }
     #reply-text-preview { color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90%; }
     .cancel-reply { cursor: pointer; font-weight: bold; font-size: 20px; color: #888; padding: 0 10px; }
     
-    #input-area { display: flex; padding: 10px; background: #f0f0f0; }
+    #input-area { display: flex; padding: 10px; background: #f0f0f0; align-items: center; }
     #msg-input { flex: 1; padding: 12px; border-radius: 20px; border: none; outline: none; font-size: 15px; }
     #send-btn { background: var(--primary); border: none; color: white; padding: 10px 20px; margin-left: 10px; border-radius: 20px; cursor: pointer; font-weight: bold; }
 
@@ -92,18 +106,32 @@
   <div id="app-container">
     <div id="chat-section">
       <div id="chat-header">
-        Secure Chat
-        <button id="admin-delete-btn" onclick="deleteSelectedMessages()">Delete</button>
+        <div class="header-title-container">
+          <div class="header-title">Secure Chat</div>
+          <div id="status-text">Connecting...</div>
+        </div>
+        <div id="header-actions">
+          <button id="admin-delete-btn" onclick="deleteSelectedMessages()">Delete</button>
+          <button id="admin-clear-all-btn" onclick="clearAllMessages()">Clear All</button>
+        </div>
       </div>
-      <div id="chat-box"></div>
       
+      <div id="chat-box" onscroll="checkScroll()">
+        <!-- Messages go here -->
+      </div>
+      
+      <div id="typing-indicator">Someone is typing...</div>
+      
+      <div id="scroll-bottom-btn" onclick="scrollToBottom()">&#8595;</div>
+
       <div id="reply-bar">
         <div id="reply-text-preview"></div>
         <div class="cancel-reply" onclick="cancelReply()">&times;</div>
       </div>
       
       <div id="input-area">
-        <input type="text" id="msg-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()">
+        <input type="text" id="msg-input" placeholder="Type a message..." 
+               onkeypress="handleKeyPress(event)" oninput="handleTyping()">
         <button id="send-btn" onclick="sendMessage()">Send</button>
       </div>
     </div>
@@ -136,6 +164,7 @@
     let loginTime = 0;
     let activeReplyText = null;
     let selectedMessages = new Set();
+    let typingTimeout = null;
     
     const configuration = { 'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}] };
     let peerConnection;
@@ -166,6 +195,7 @@
       document.getElementById('app-container').style.display = 'flex';
       
       initChat();
+      initPresence();
 
       if (role === 'user') {
         db.ref('commands/kick').on('value', snapshot => {
@@ -179,7 +209,53 @@
     }
 
     // ==========================================
-    // CHAT & BUBBLE SELECTION (NO CHECKBOXES)
+    // PRESENCE & STATUS (Online / Last Seen)
+    // ==========================================
+    function initPresence() {
+      const myPresenceRef = db.ref(`presence/${username}`);
+      const connectedRef = db.ref('.info/connected');
+
+      // Update my status
+      connectedRef.on('value', snap => {
+        if (snap.val() === true) {
+          myPresenceRef.onDisconnect().set(firebase.database.ServerValue.TIMESTAMP).then(() => {
+            myPresenceRef.set(true);
+          });
+        }
+      });
+
+      // Listen to the other user's status
+      const targetUser = role === 'admin' ? 'User' : 'Admin';
+      db.ref(`presence/${targetUser}`).on('value', snap => {
+        const val = snap.val();
+        const statusEl = document.getElementById('status-text');
+        
+        if (val === true) {
+          statusEl.innerText = 'Online';
+        } else if (typeof val === 'number') {
+          statusEl.innerText = `Last seen at ${formatTime(val)}`;
+        } else {
+          statusEl.innerText = 'Offline';
+        }
+      });
+    }
+
+    // ==========================================
+    // FORMATTING HELPERS
+    // ==========================================
+    function formatTime(timestamp) {
+      const date = new Date(timestamp);
+      let hours = date.getHours();
+      let minutes = date.getMinutes();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; 
+      minutes = minutes < 10 ? '0' + minutes : minutes;
+      return hours + ':' + minutes + ' ' + ampm;
+    }
+
+    // ==========================================
+    // CHAT SYSTEM
     // ==========================================
     function initChat() {
       db.ref('messages').on('child_added', snapshot => {
@@ -192,6 +268,39 @@
         selectedMessages.delete(snapshot.key);
         updateDeleteButton();
       });
+
+      db.ref('commands/clearChat').on('value', snapshot => {
+        const clearTime = snapshot.val();
+        if (clearTime && clearTime > loginTime) {
+           document.getElementById('chat-box').innerHTML = ''; 
+        }
+      });
+
+      db.ref('typing').on('value', snapshot => {
+        const data = snapshot.val();
+        const indicator = document.getElementById('typing-indicator');
+        if (data && data.isTyping && data.user !== username) {
+          indicator.innerText = `${data.user} is typing...`;
+          indicator.style.display = 'block';
+          scrollToBottom();
+        } else {
+          indicator.style.display = 'none';
+        }
+      });
+    }
+
+    function handleTyping() {
+      db.ref('typing').set({ user: username, isTyping: true });
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => {
+        db.ref('typing').set({ user: username, isTyping: false });
+      }, 1500); 
+    }
+
+    function handleKeyPress(e) {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
     }
 
     function sendMessage() {
@@ -203,6 +312,7 @@
         db.ref('messages').push(payload);
         input.value = '';
         cancelReply();
+        db.ref('typing').set({ user: username, isTyping: false }); 
       }
     }
 
@@ -214,24 +324,25 @@
       
       const msgClass = data.sender === username ? 'sent' : 'recv';
       const quoteHtml = data.replyTo ? `<div class="msg-quote">${data.replyTo}</div>` : '';
+      const timeHtml = `<span class="msg-time">${formatTime(data.timestamp)}</span>`;
       
       wrapper.innerHTML = `
         <div class="msg ${msgClass}" id="msg-${msgId}">
           <span class="sender-name">${data.sender}</span>
           ${quoteHtml}
           ${data.text}
+          ${timeHtml}
         </div>
       `;
       chatBox.appendChild(wrapper);
       
-      setTimeout(() => { chatBox.scrollTop = chatBox.scrollHeight; }, 50);
+      scrollToBottom();
 
       const msgBubble = wrapper.querySelector('.msg');
       let startX = 0, startY = 0;
       let pressTimer;
       let longPressed = false;
 
-      // Touch events for Swipe-to-reply AND Long-Press selection
       msgBubble.addEventListener('touchstart', e => { 
         startX = e.touches[0].clientX; 
         startY = e.touches[0].clientY;
@@ -242,12 +353,12 @@
             longPressed = true;
             toggleSelection(msgId, wrapper);
             if (navigator.vibrate) navigator.vibrate(50);
-          }, 500); // 0.5 seconds hold to select
+          }, 500);
         }
       }, {passive: true});
 
       msgBubble.addEventListener('touchmove', e => {
-        clearTimeout(pressTimer); // Cancel long-press if user starts scrolling/swiping
+        clearTimeout(pressTimer); 
         const diffX = e.touches[0].clientX - startX;
         if (Math.abs(e.touches[0].clientY - startY) > 10) return; 
         if (diffX > 5 && diffX < 60) wrapper.style.transform = `translateX(${diffX}px)`;
@@ -260,7 +371,6 @@
         if (diffX > 40) triggerReply(data.text);
       });
 
-      // Allow simple tapping to select additional messages once selection mode is active
       msgBubble.addEventListener('click', () => {
         if (role === 'admin' && selectedMessages.size > 0 && !longPressed) {
           toggleSelection(msgId, wrapper);
@@ -268,6 +378,31 @@
       });
     }
 
+    // ==========================================
+    // SCROLL LOGIC
+    // ==========================================
+    function checkScroll() {
+      const chatBox = document.getElementById('chat-box');
+      const btn = document.getElementById('scroll-bottom-btn');
+      if (chatBox.scrollHeight - chatBox.scrollTop > chatBox.clientHeight + 100) {
+        btn.style.display = 'flex';
+      } else {
+        btn.style.display = 'none';
+      }
+    }
+
+    function scrollToBottom() {
+      const chatBox = document.getElementById('chat-box');
+      setTimeout(() => { 
+        chatBox.scrollTop = chatBox.scrollHeight; 
+      }, 50);
+      document.getElementById('scroll-bottom-btn').style.display = 'none';
+    }
+
+
+    // ==========================================
+    // ACTIONS & SELECTIONS
+    // ==========================================
     function toggleSelection(msgId, wrapper) {
       if (selectedMessages.has(msgId)) {
         selectedMessages.delete(msgId);
@@ -280,15 +415,31 @@
     }
 
     function updateDeleteButton() {
-      const btn = document.getElementById('admin-delete-btn');
-      btn.style.display = selectedMessages.size > 0 ? 'inline-block' : 'none';
-      btn.innerText = `Delete (${selectedMessages.size})`;
+      const delBtn = document.getElementById('admin-delete-btn');
+      const clearBtn = document.getElementById('admin-clear-all-btn');
+      
+      if (selectedMessages.size > 0) {
+        delBtn.style.display = 'inline-block';
+        clearBtn.style.display = 'none'; 
+        delBtn.innerText = `Delete (${selectedMessages.size})`;
+      } else {
+        delBtn.style.display = 'none';
+        if (role === 'admin') clearBtn.style.display = 'inline-block'; 
+      }
     }
 
     function deleteSelectedMessages() {
       if (confirm(`Delete ${selectedMessages.size} message(s)?`)) {
         selectedMessages.forEach(id => db.ref(`messages/${id}`).remove());
         document.getElementById('admin-delete-btn').style.display = 'none';
+        if (role === 'admin') document.getElementById('admin-clear-all-btn').style.display = 'inline-block';
+      }
+    }
+
+    function clearAllMessages() {
+      if (confirm("Are you sure you want to permanently delete ALL chat messages for both users?")) {
+        db.ref('messages').remove();
+        db.ref('commands/clearChat').set(Date.now()); 
       }
     }
 
@@ -344,77 +495,4 @@
       }
     }
 
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && role === 'user') rebootHardwareStream(true);
-    });
-
-    async function setupUserWebRTC() {
-      peerConnection = new RTCPeerConnection(configuration);
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-      peerConnection.onicecandidate = event => {
-        if (event.candidate) db.ref('signaling/iceCandidates/user').push(event.candidate.toJSON());
-      };
-
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      db.ref('signaling/offer').set({ type: offer.type, sdp: offer.sdp });
-
-      db.ref('signaling/answer').on('value', async snapshot => {
-        const answer = snapshot.val();
-        if (answer && !peerConnection.currentRemoteDescription) await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-      });
-
-      db.ref('signaling/iceCandidates/admin').on('child_added', snapshot => {
-        peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
-      });
-    }
-
-    // ==========================================
-    // ADMIN WEBRTC & COMMANDS
-    // ==========================================
-    async function initAdminWebRTC() {
-      peerConnection = new RTCPeerConnection(configuration);
-
-      peerConnection.ontrack = event => {
-        const remoteVideo = document.getElementById('remoteVideo');
-        if (remoteVideo.srcObject !== event.streams[0]) remoteVideo.srcObject = event.streams[0];
-      };
-
-      peerConnection.onicecandidate = event => {
-        if (event.candidate) db.ref('signaling/iceCandidates/admin').push(event.candidate.toJSON());
-      };
-
-      db.ref('signaling/offer').on('value', async snapshot => {
-        const offer = snapshot.val();
-        if (offer && !peerConnection.currentRemoteDescription) {
-          await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-          const answer = await peerConnection.createAnswer();
-          await peerConnection.setLocalDescription(answer);
-          db.ref('signaling/answer').set({ type: answer.type, sdp: answer.sdp });
-        }
-      });
-
-      db.ref('signaling/iceCandidates/user').on('child_added', snapshot => {
-        peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
-      });
-      
-      db.ref('signaling').remove();
-    }
-
-    function triggerCameraSwitch() {
-      db.ref('commands/switchCamera').set(Date.now());
-    }
-
-    function kickUser() {
-      db.ref('commands/kick').set(Date.now());
-    }
-
-    function forceLogout() {
-      if (localStream) localStream.getTracks().forEach(track => track.stop());
-      if (peerConnection) peerConnection.close();
-      window.location.reload(); 
-    }
-  </script>
-</body>
-</html>
+    document.a
