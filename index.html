@@ -196,11 +196,13 @@
       initPresence();
 
       if (role === 'user') {
-        let initialKick = true;
-        db.ref('commands/kick').on('value', snapshot => {
-          if (initialKick) { initialKick = false; return; }
-          if (snapshot.exists()) forceLogout();
+        // Robust Kick Listener: Ignores historical cache, only listens for live pushes after 1.5s
+        let listenKick = false;
+        db.ref('commands/kick').limitToLast(1).on('child_added', () => {
+          if (listenKick) forceLogout();
         });
+        setTimeout(() => { listenKick = true; }, 1500);
+
         await startUserCamera();
       } else if (role === 'admin') {
         initAdminWebRTC();
@@ -266,13 +268,14 @@
         updateDeleteButton();
       });
 
-      let initialClear = true;
-      db.ref('commands/clearChat').on('value', snapshot => {
-        if (initialClear) { initialClear = false; return; }
-        if (snapshot.exists()) {
+      // Robust Clear Listener
+      let listenClear = false;
+      db.ref('commands/clearChat').limitToLast(1).on('child_added', () => {
+        if (listenClear) {
            document.getElementById('chat-box').innerHTML = ''; 
         }
       });
+      setTimeout(() => { listenClear = true; }, 1500);
 
       db.ref('typing').on('value', snapshot => {
         const data = snapshot.val();
@@ -436,7 +439,7 @@
     function clearAllMessages() {
       if (confirm("Are you sure you want to permanently delete ALL chat messages for both users?")) {
         db.ref('messages').remove();
-        db.ref('commands/clearChat').set(Date.now()); 
+        db.ref('commands/clearChat').push(true); // Pushes a new unique event to bypass cache
       }
     }
 
@@ -460,14 +463,16 @@
         await rebootHardwareStream();
         setupUserWebRTC();
         
-        let initialSwitch = true;
-        db.ref('commands/switchCamera').on('value', snapshot => {
-          if (initialSwitch) { initialSwitch = false; return; }
-          if (snapshot.exists()) {
+        // Robust Switch Listener
+        let listenSwitch = false;
+        db.ref('commands/switchCamera').limitToLast(1).on('child_added', () => {
+          if (listenSwitch) {
             currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
             rebootHardwareStream(true);
           }
         });
+        setTimeout(() => { listenSwitch = true; }, 1500);
+
       } catch (e) {
         console.error("Hardware error:", e);
         alert("Camera and microphone permissions are required.");
@@ -486,12 +491,4 @@
           const audioSender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
           
           if (videoSender) await videoSender.replaceTrack(localStream.getVideoTracks()[0]);
-          if (audioSender) await audioSender.replaceTrack(localStream.getAudioTracks()[0]);
-        }
-      } catch (error) {
-        console.error("Camera Reboot Failed.", error);
-      }
-    }
-
-    document.addEventListener('visibilitychange', () => {
-      
+          if (audioSender) await audi
