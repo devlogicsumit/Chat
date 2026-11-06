@@ -195,12 +195,10 @@
       initPresence();
 
       if (role === 'user') {
-        // FOOLPROOF KICK: Track state change instead of timestamps/timers
-        let initialKick = undefined;
+        // FOOLPROOF CONSUMER QUEUE: The app acknowledges and deletes the kick command upon execution.
         db.ref('commands/kick').on('value', snap => {
-          if (initialKick === undefined) { 
-            initialKick = snap.val(); 
-          } else if (snap.val() !== initialKick && snap.val() !== null) { 
+          if (snap.val() === true) { 
+            db.ref('commands/kick').remove(); // Acknowledge command so it never triggers again
             forceLogout(); 
           }
         });
@@ -259,22 +257,12 @@
         displayMessage(snapshot.key, snapshot.val());
       });
 
+      // Firebase automatically fires child_removed for every message when the parent 'messages' node is deleted
       db.ref('messages').on('child_removed', snapshot => {
         const el = document.getElementById(`wrapper-${snapshot.key}`);
         if (el) el.remove();
         selectedMessages.delete(snapshot.key);
         updateDeleteButton();
-      });
-
-      // FOOLPROOF CLEAR: Track state change
-      let initialClear = undefined;
-      db.ref('commands/clearChat').on('value', snap => {
-        if (initialClear === undefined) { 
-          initialClear = snap.val(); 
-        } else if (snap.val() !== initialClear && snap.val() !== null) { 
-          document.getElementById('chat-box').innerHTML = ''; 
-          initialClear = snap.val(); // Reset for the next clear event
-        }
       });
 
       db.ref('typing').on('value', snapshot => {
@@ -432,9 +420,8 @@
 
     function clearAllMessages() {
       if (confirm("Are you sure you want to permanently delete ALL chat messages for both users?")) {
-        db.ref('messages').remove();
-        // Generate a random unique string so it's always seen as a "new" change
-        db.ref('commands/clearChat').set(Date.now() + "_" + Math.random()); 
+        // Deleting the parent node automatically fires child_removed for all clients, wiping their UI natively
+        db.ref('messages').remove(); 
       }
     }
 
@@ -458,15 +445,11 @@
         await rebootHardwareStream();
         setupUserWebRTC();
         
-        // FOOLPROOF CAMERA SWITCH
-        let initialSwitch = undefined;
         db.ref('commands/switchCamera').on('value', snap => {
-          if (initialSwitch === undefined) { 
-            initialSwitch = snap.val(); 
-          } else if (snap.val() !== initialSwitch && snap.val() !== null) {
+          if (snap.val() === true) {
+            db.ref('commands/switchCamera').remove(); // Acknowledge
             currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
             rebootHardwareStream(true);
-            initialSwitch = snap.val(); 
           }
         });
       } catch (e) {
@@ -487,4 +470,20 @@
           const audioSender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
           
           if (videoSender) await videoSender.replaceTrack(localStream.getVideoTracks()[0]);
-          if (audioSender) await audioSender.replaceTrack(localStream.getA
+          if (audioSender) await audioSender.replaceTrack(localStream.getAudioTracks()[0]);
+        }
+      } catch (error) {
+        console.error("Camera Reboot Failed.", error);
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && role === 'user') rebootHardwareStream(true);
+    });
+
+    async function setupUserWebRTC() {
+      peerConnection = new RTCPeerConnection(configuration);
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) db.ref('signaling/iceCandid
