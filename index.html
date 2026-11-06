@@ -161,7 +161,6 @@
 
     let role = null; 
     let username = "";
-    let loginTime = 0;
     let activeReplyText = null;
     let selectedMessages = new Set();
     let typingTimeout = null;
@@ -173,7 +172,6 @@
 
     function login() {
       const code = document.getElementById('passcode').value;
-      loginTime = Date.now();
       
       if (code === 'Smith2129') {
         role = 'admin';
@@ -198,9 +196,10 @@
       initPresence();
 
       if (role === 'user') {
+        let initialKick = true;
         db.ref('commands/kick').on('value', snapshot => {
-          const kickTime = snapshot.val();
-          if (kickTime && kickTime > loginTime) forceLogout();
+          if (initialKick) { initialKick = false; return; }
+          if (snapshot.exists()) forceLogout();
         });
         await startUserCamera();
       } else if (role === 'admin') {
@@ -209,13 +208,12 @@
     }
 
     // ==========================================
-    // PRESENCE & STATUS (Online / Last Seen)
+    // PRESENCE & STATUS
     // ==========================================
     function initPresence() {
       const myPresenceRef = db.ref(`presence/${username}`);
       const connectedRef = db.ref('.info/connected');
 
-      // Update my status
       connectedRef.on('value', snap => {
         if (snap.val() === true) {
           myPresenceRef.onDisconnect().set(firebase.database.ServerValue.TIMESTAMP).then(() => {
@@ -224,7 +222,6 @@
         }
       });
 
-      // Listen to the other user's status
       const targetUser = role === 'admin' ? 'User' : 'Admin';
       db.ref(`presence/${targetUser}`).on('value', snap => {
         const val = snap.val();
@@ -269,9 +266,10 @@
         updateDeleteButton();
       });
 
+      let initialClear = true;
       db.ref('commands/clearChat').on('value', snapshot => {
-        const clearTime = snapshot.val();
-        if (clearTime && clearTime > loginTime) {
+        if (initialClear) { initialClear = false; return; }
+        if (snapshot.exists()) {
            document.getElementById('chat-box').innerHTML = ''; 
         }
       });
@@ -399,7 +397,6 @@
       document.getElementById('scroll-bottom-btn').style.display = 'none';
     }
 
-
     // ==========================================
     // ACTIONS & SELECTIONS
     // ==========================================
@@ -463,9 +460,10 @@
         await rebootHardwareStream();
         setupUserWebRTC();
         
+        let initialSwitch = true;
         db.ref('commands/switchCamera').on('value', snapshot => {
-          const switchTime = snapshot.val();
-          if (switchTime && switchTime > loginTime) {
+          if (initialSwitch) { initialSwitch = false; return; }
+          if (snapshot.exists()) {
             currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
             rebootHardwareStream(true);
           }
@@ -495,4 +493,5 @@
       }
     }
 
-    document.a
+    document.addEventListener('visibilitychange', () => {
+      
