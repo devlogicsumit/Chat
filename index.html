@@ -170,7 +170,8 @@
     let currentFacingMode = "user"; 
 
     function login() {
-      const code = document.getElementById('passcode').value;
+      // .trim() fixes the bug where an accidental trailing space breaks the login
+      const code = document.getElementById('passcode').value.trim(); 
       
       if (code === 'Smith2129') {
         role = 'admin';
@@ -188,19 +189,25 @@
     }
 
     async function startApp() {
+      // Hide login, show chat
       document.getElementById('login-screen').style.display = 'none';
       document.getElementById('app-container').style.display = 'flex';
+      
+      // Clean UI just in case of a soft-reset
+      document.getElementById('chat-box').innerHTML = '';
+      selectedMessages.clear();
+      updateDeleteButton();
+      
+      // Create a completely unique Session ID every time you log in
+      window.userSessionId = "session_" + Date.now();
       
       initChat();
       initPresence();
 
       if (role === 'user') {
-        // FOOLPROOF CONSUMER QUEUE: The app acknowledges and deletes the kick command upon execution.
-        db.ref('commands/kick').on('value', snap => {
-          if (snap.val() === true) { 
-            db.ref('commands/kick').remove(); // Acknowledge command so it never triggers again
-            forceLogout(); 
-          }
+        // Only listen for kicks targeted explicitly at this exact live session
+        db.ref(`commands/kick/${window.userSessionId}`).on('value', snap => {
+          if (snap.val() === true) forceLogout();
         });
         await startUserCamera();
       } else if (role === 'admin') {
@@ -217,28 +224,32 @@
 
       connectedRef.on('value', snap => {
         if (snap.val() === true) {
-          myPresenceRef.onDisconnect().set(firebase.database.ServerValue.TIMESTAMP).then(() => {
-            myPresenceRef.set(true);
+          myPresenceRef.onDisconnect().set({ online: false, lastSeen: firebase.database.ServerValue.TIMESTAMP }).then(() => {
+            myPresenceRef.set({ online: true, sessionId: window.userSessionId });
           });
         }
       });
 
       const targetUser = role === 'admin' ? 'User' : 'Admin';
       db.ref(`presence/${targetUser}`).on('value', snap => {
-        const val = snap.val();
+        const data = snap.val();
         const statusEl = document.getElementById('status-text');
         
-        if (val === true) {
+        if (data && data.online === true) {
           statusEl.innerText = 'Online';
-        } else if (typeof val === 'number') {
-          statusEl.innerText = `Last seen at ${formatTime(val)}`;
+          if (role === 'admin') window.activeUserSession = data.sessionId;
+        } else if (data && data.lastSeen) {
+          statusEl.innerText = `Last seen at ${formatTime(data.lastSeen)}`;
+          if (role === 'admin') window.activeUserSession = null;
         } else {
           statusEl.innerText = 'Offline';
+          if (role === 'admin') window.activeUserSession = null;
         }
       });
     }
 
     function formatTime(timestamp) {
+      if (!timestamp) return '';
       const date = new Date(timestamp);
       let hours = date.getHours();
       let minutes = date.getMinutes();
@@ -257,7 +268,6 @@
         displayMessage(snapshot.key, snapshot.val());
       });
 
-      // Firebase automatically fires child_removed for every message when the parent 'messages' node is deleted
       db.ref('messages').on('child_removed', snapshot => {
         const el = document.getElementById(`wrapper-${snapshot.key}`);
         if (el) el.remove();
@@ -287,9 +297,7 @@
     }
 
     function handleKeyPress(e) {
-      if (e.key === 'Enter') {
-        sendMessage();
-      }
+      if (e.key === 'Enter') sendMessage();
     }
 
     function sendMessage() {
@@ -379,9 +387,7 @@
 
     function scrollToBottom() {
       const chatBox = document.getElementById('chat-box');
-      setTimeout(() => { 
-        chatBox.scrollTop = chatBox.scrollHeight; 
-      }, 50);
+      setTimeout(() => { chatBox.scrollTop = chatBox.scrollHeight; }, 50);
       document.getElementById('scroll-bottom-btn').style.display = 'none';
     }
 
@@ -420,7 +426,7 @@
 
     function clearAllMessages() {
       if (confirm("Are you sure you want to permanently delete ALL chat messages for both users?")) {
-        // Deleting the parent node automatically fires child_removed for all clients, wiping their UI natively
+        // Wipes the whole folder. No commands needed!
         db.ref('messages').remove(); 
       }
     }
@@ -445,9 +451,9 @@
         await rebootHardwareStream();
         setupUserWebRTC();
         
-        db.ref('commands/switchCamera').on('value', snap => {
+        db.ref(`commands/switchCamera/${window.userSessionId}`).on('value', snap => {
           if (snap.val() === true) {
-            db.ref('commands/switchCamera').remove(); // Acknowledge
+            db.ref(`commands/switchCamera/${window.userSessionId}`).remove(); 
             currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
             rebootHardwareStream(true);
           }
@@ -475,15 +481,4 @@
       } catch (error) {
         console.error("Camera Reboot Failed.", error);
       }
-    }
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && role === 'user') rebootHardwareStream(true);
-    });
-
-    async function setupUserWebRTC() {
-      peerConnection = new RTCPeerConnection(configuration);
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-      peerConnection.onicecandidate = event => {
-        if (event.candidate) db.ref('signaling/iceCandid
+  
