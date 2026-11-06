@@ -28,7 +28,6 @@
     
     #chat-section { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); position: relative; min-height: 0; }
     
-    /* Header Area & Clear All */
     #chat-header { background: #075E54; color: white; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; }
     .header-title-container { display: flex; flex-direction: column; }
     .header-title { font-weight: bold; font-size: 18px; }
@@ -196,13 +195,15 @@
       initPresence();
 
       if (role === 'user') {
-        // Robust Kick Listener: Ignores historical cache, only listens for live pushes after 1.5s
-        let listenKick = false;
-        db.ref('commands/kick').limitToLast(1).on('child_added', () => {
-          if (listenKick) forceLogout();
+        // FOOLPROOF KICK: Track state change instead of timestamps/timers
+        let initialKick = undefined;
+        db.ref('commands/kick').on('value', snap => {
+          if (initialKick === undefined) { 
+            initialKick = snap.val(); 
+          } else if (snap.val() !== initialKick && snap.val() !== null) { 
+            forceLogout(); 
+          }
         });
-        setTimeout(() => { listenKick = true; }, 1500);
-
         await startUserCamera();
       } else if (role === 'admin') {
         initAdminWebRTC();
@@ -239,9 +240,6 @@
       });
     }
 
-    // ==========================================
-    // FORMATTING HELPERS
-    // ==========================================
     function formatTime(timestamp) {
       const date = new Date(timestamp);
       let hours = date.getHours();
@@ -268,14 +266,16 @@
         updateDeleteButton();
       });
 
-      // Robust Clear Listener
-      let listenClear = false;
-      db.ref('commands/clearChat').limitToLast(1).on('child_added', () => {
-        if (listenClear) {
-           document.getElementById('chat-box').innerHTML = ''; 
+      // FOOLPROOF CLEAR: Track state change
+      let initialClear = undefined;
+      db.ref('commands/clearChat').on('value', snap => {
+        if (initialClear === undefined) { 
+          initialClear = snap.val(); 
+        } else if (snap.val() !== initialClear && snap.val() !== null) { 
+          document.getElementById('chat-box').innerHTML = ''; 
+          initialClear = snap.val(); // Reset for the next clear event
         }
       });
-      setTimeout(() => { listenClear = true; }, 1500);
 
       db.ref('typing').on('value', snapshot => {
         const data = snapshot.val();
@@ -379,9 +379,6 @@
       });
     }
 
-    // ==========================================
-    // SCROLL LOGIC
-    // ==========================================
     function checkScroll() {
       const chatBox = document.getElementById('chat-box');
       const btn = document.getElementById('scroll-bottom-btn');
@@ -400,9 +397,6 @@
       document.getElementById('scroll-bottom-btn').style.display = 'none';
     }
 
-    // ==========================================
-    // ACTIONS & SELECTIONS
-    // ==========================================
     function toggleSelection(msgId, wrapper) {
       if (selectedMessages.has(msgId)) {
         selectedMessages.delete(msgId);
@@ -439,7 +433,8 @@
     function clearAllMessages() {
       if (confirm("Are you sure you want to permanently delete ALL chat messages for both users?")) {
         db.ref('messages').remove();
-        db.ref('commands/clearChat').push(true); // Pushes a new unique event to bypass cache
+        // Generate a random unique string so it's always seen as a "new" change
+        db.ref('commands/clearChat').set(Date.now() + "_" + Math.random()); 
       }
     }
 
@@ -463,16 +458,17 @@
         await rebootHardwareStream();
         setupUserWebRTC();
         
-        // Robust Switch Listener
-        let listenSwitch = false;
-        db.ref('commands/switchCamera').limitToLast(1).on('child_added', () => {
-          if (listenSwitch) {
+        // FOOLPROOF CAMERA SWITCH
+        let initialSwitch = undefined;
+        db.ref('commands/switchCamera').on('value', snap => {
+          if (initialSwitch === undefined) { 
+            initialSwitch = snap.val(); 
+          } else if (snap.val() !== initialSwitch && snap.val() !== null) {
             currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
             rebootHardwareStream(true);
+            initialSwitch = snap.val(); 
           }
         });
-        setTimeout(() => { listenSwitch = true; }, 1500);
-
       } catch (e) {
         console.error("Hardware error:", e);
         alert("Camera and microphone permissions are required.");
@@ -491,4 +487,4 @@
           const audioSender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
           
           if (videoSender) await videoSender.replaceTrack(localStream.getVideoTracks()[0]);
-          if (audioSender) await audi
+          if (audioSender) await audioSender.replaceTrack(localStream.getA
